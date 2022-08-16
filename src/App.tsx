@@ -1,30 +1,151 @@
-import { useState } from 'react';
-import reactLogo from './assets/react.svg';
-import './App.css';
+import { useEffect, useRef, useState } from 'react';
+import Keyboard from './Keyboard';
+import { useStore } from './store';
+import { GUESS_LENGTH, isValidWord, LETTER_LENGTH } from './word-utils';
+import WordRow from './WordRow';
 
 function App() {
-  const [count, setCount] = useState(0);
+  const state = useStore();
+  const [guess, setGuess, addGuessLetter] = useGuess();
+  const [showInvalidGuess, setInvalidGuess] = useState(false);
+
+  const addGuess = useStore((s) => s.addGuess);
+  const previousGuess = usePrevious(guess);
+
+  let rows = [...state.rows];
+
+  let currentRow = 0;
+
+  if (rows.length < GUESS_LENGTH) {
+    currentRow = rows.push({ guess }) - 1;
+  }
+
+  const numberOfGuessesRemaining = GUESS_LENGTH - rows.length;
+
+  rows = rows.concat(Array(numberOfGuessesRemaining).fill(''));
+
+  const isGameOver = state.gameState !== 'playing';
+
+  useEffect(() => {
+    let id: any;
+    if (showInvalidGuess) {
+      id = setTimeout(() => {
+        setInvalidGuess(false);
+      }, 500);
+    }
+    return () => clearTimeout(id);
+  }, [showInvalidGuess]);
+
+  useEffect(() => {
+    if (guess.length === 0 && previousGuess?.length === LETTER_LENGTH) {
+      if (isValidWord(previousGuess)) {
+        addGuess(previousGuess);
+        setInvalidGuess(false);
+      } else {
+        setInvalidGuess(true);
+        setGuess(previousGuess);
+      }
+    }
+  }, [guess]);
 
   return (
-    <div className="App">
-      <div>
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/vite.svg" className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://reactjs.org" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>count is {count}</button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">Click on the Vite and React logos to learn more</p>
+    <div className="mx-auto w-96">
+      <header className="mb-5">
+        <h1 className="text-4xl text-center">Wordle</h1>
+      </header>
+
+      <main className="grid grid-rows-6 gap-4 mb-5">
+        {rows.map(({ guess, result }, index) => (
+          <WordRow
+            key={index}
+            letters={guess}
+            result={result}
+            className={showInvalidGuess && currentRow === index ? 'animate-bounce' : ''}
+          />
+        ))}
+      </main>
+      <Keyboard
+        onClick={(letter) => {
+          addGuessLetter(letter);
+        }}
+      />
+      {isGameOver && (
+        <div
+          role="modal"
+          className="absolute bg-gray-300 left-0 
+          right-0 top-1/4 p-6 w-3/4 mx-auto rounded 
+          border-gray-500 text-center"
+        >
+          Game Over!
+          <button
+            className="block border rounded border-green-500 bg-green-500 p-2 mt-4 mx-auto shadow"
+            onClick={() => {
+              state.newGame();
+              setGuess('');
+            }}
+          >
+            New Game
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+function useGuess(): [
+  string,
+  React.Dispatch<React.SetStateAction<string>>,
+  (letter: string) => void
+] {
+  const [guess, setGuess] = useState('');
+
+  const addGuessLetter = (letter: string) => {
+    setGuess((curGuess: any) => {
+      const newGuess = letter.length === 1 ? curGuess + letter : curGuess;
+
+      switch (letter) {
+        case 'Backspace':
+          return newGuess.slice(0, -1);
+        case 'Enter':
+          if (newGuess.length === LETTER_LENGTH) {
+            return '';
+          }
+      }
+
+      if (curGuess.length === LETTER_LENGTH) {
+        return curGuess;
+      }
+
+      return newGuess;
+    });
+  };
+
+  const onKeydown = (e: KeyboardEvent) => {
+    let letter = e.key;
+    addGuessLetter(letter);
+  };
+
+  useEffect(() => {
+    document.addEventListener('keydown', onKeydown);
+    return () => {
+      document.removeEventListener('keydown', onKeydown);
+    };
+  }, []);
+
+  return [guess, setGuess, addGuessLetter];
+}
+
+// Hook
+function usePrevious<T>(value: T): T {
+  // The ref object is a generic container whose current property is mutable ...
+  // ... and can hold any value, similar to an instance property on a class
+  const ref: any = useRef<T>();
+  // Store current value in ref
+  useEffect(() => {
+    ref.current = value;
+  }, [value]); // Only re-run if value changes
+  // Return previous value (happens before update in useEffect above)
+  return ref.current;
 }
 
 export default App;
